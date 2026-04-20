@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:intl/intl.dart' hide TextDirection; // <--- Add 'hide TextDirection'
+import 'package:intl/intl.dart' hide TextDirection;
 import 'bill_model.dart';
 import 'bill_storage.dart';
 import 'bill_preview_screen.dart';

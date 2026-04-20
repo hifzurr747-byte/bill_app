@@ -1,22 +1,34 @@
+import 'dart:io';
 import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:printing/printing.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:intl/intl.dart';
+import 'package:path_provider/path_provider.dart';
 import 'bill_model.dart';
 import 'bill_storage.dart';
 
-class BillPreviewScreen extends StatelessWidget {
+class BillPreviewScreen extends StatefulWidget {
   final Bill bill;
 
   const BillPreviewScreen({super.key, required this.bill});
+
+  @override
+  State<BillPreviewScreen> createState() => _BillPreviewScreenState();
+}
+
+class _BillPreviewScreenState extends State<BillPreviewScreen> {
+  Bill get bill => widget.bill;
 
   static const Color primaryRed = Color(0xFFC0392B);
   static const PdfColor pdfRed = PdfColor.fromInt(0xFFC0392B);
   static const PdfColor pdfLightRed = PdfColor.fromInt(0xFFFFEBEB);
   static const PdfColor pdfCream = PdfColor.fromInt(0xFFFAF6F1);
   static const PdfColor pdfGrey = PdfColor.fromInt(0xFF666666);
+
+  bool _saving = false;
 
   @override
   Widget build(BuildContext context) {
@@ -55,55 +67,120 @@ class BillPreviewScreen extends StatelessWidget {
               ),
             ),
           ),
+          // Bottom action buttons
           Container(
-            padding: const EdgeInsets.all(16),
-            color: Colors.white,
-            child: Row(
+            padding: const EdgeInsets.fromLTRB(12, 10, 12, 14),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.08),
+                  blurRadius: 8,
+                  offset: const Offset(0, -2),
+                ),
+              ],
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
               children: [
-                Expanded(
-                  child: OutlinedButton.icon(
-                    onPressed: () => Navigator.pop(context),
-                    icon: const Icon(Icons.edit, color: primaryRed),
-                    label: Text(
-                      bill.isUrdu ? 'ترمیم کریں' : 'Edit',
-                      style: const TextStyle(color: primaryRed),
-                    ),
-                    style: OutlinedButton.styleFrom(
-                      side: const BorderSide(color: primaryRed),
-                      padding: const EdgeInsets.symmetric(vertical: 12),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(8),
+                // Row 1: Edit + Print
+                Row(
+                  children: [
+                    Expanded(
+                      child: OutlinedButton.icon(
+                        onPressed: () => Navigator.pop(context),
+                        icon: const Icon(Icons.edit, color: primaryRed, size: 18),
+                        label: Text(
+                          bill.isUrdu ? 'ترمیم' : 'Edit',
+                          style: const TextStyle(color: primaryRed),
+                        ),
+                        style: OutlinedButton.styleFrom(
+                          side: const BorderSide(color: primaryRed),
+                          padding: const EdgeInsets.symmetric(vertical: 11),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                        ),
                       ),
                     ),
-                  ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      flex: 2,
+                      child: ElevatedButton.icon(
+                        onPressed: () => _printBill(context),
+                        icon: const Icon(Icons.print, size: 18),
+                        label: Text(
+                          bill.isUrdu ? 'پرنٹ کریں' : 'Print',
+                          style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
+                        ),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: primaryRed,
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(vertical: 11),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
-                const SizedBox(width: 12),
-                Expanded(
-                  flex: 2,
-                  child: ElevatedButton.icon(
-                    onPressed: () => _printBill(context),
-                    icon: const Icon(Icons.print),
-                    label: Text(
-                      bill.isUrdu ? 'پرنٹ کریں' : 'Print Bill',
-                      style: const TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.bold,
+                const SizedBox(height: 8),
+                // Row 2: Save + Share + Download
+                Row(
+                  children: [
+                    Expanded(
+                      child: _actionButton(
+                        icon: Icons.save_alt,
+                        label: bill.isUrdu ? 'محفوظ کریں' : 'Save',
+                        color: Colors.green.shade600,
+                        onTap: () => _saveBillOnly(context),
                       ),
                     ),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: primaryRed,
-                      foregroundColor: Colors.white,
-                      padding: const EdgeInsets.symmetric(vertical: 12),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(8),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: _actionButton(
+                        icon: Icons.share,
+                        label: bill.isUrdu ? 'شیئر' : 'Share',
+                        color: Colors.blue.shade600,
+                        onTap: () => _shareBill(context),
                       ),
                     ),
-                  ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: _actionButton(
+                        icon: Icons.download,
+                        label: bill.isUrdu ? 'ڈاؤنلوڈ' : 'Download',
+                        color: Colors.orange.shade700,
+                        onTap: () => _downloadPdf(context),
+                      ),
+                    ),
+                  ],
                 ),
+                if (_saving)
+                  const Padding(
+                    padding: EdgeInsets.only(top: 8),
+                    child: LinearProgressIndicator(color: primaryRed),
+                  ),
               ],
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _actionButton({
+    required IconData icon,
+    required String label,
+    required Color color,
+    required VoidCallback onTap,
+  }) {
+    return ElevatedButton.icon(
+      onPressed: onTap,
+      icon: Icon(icon, size: 16),
+      label: Text(label, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
+      style: ElevatedButton.styleFrom(
+        backgroundColor: color,
+        foregroundColor: Colors.white,
+        padding: const EdgeInsets.symmetric(vertical: 10),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
       ),
     );
   }
@@ -222,7 +299,7 @@ class BillPreviewScreen extends StatelessWidget {
                         Padding(
                           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
                           child: Text(
-                            isUrdu ? 'نمبر' : 'Bill No',
+                            isUrdu ? 'بل نمبر' : 'Bill No',
                             style: TextStyle(fontSize: 11, color: Colors.red.shade700, fontWeight: FontWeight.bold),
                             textAlign: TextAlign.center,
                           ),
@@ -503,25 +580,31 @@ class BillPreviewScreen extends StatelessWidget {
     final isUrdu = bill.isUrdu;
     final dateStr = DateFormat('dd/MM/yyyy').format(bill.date);
 
-    // Load Urdu font if needed
+    // Load Urdu font from assets
     pw.Font? urduFont;
     pw.Font? urduBoldFont;
-    if (isUrdu) {
+    try {
+      final regularData = await rootBundle.load('assets/fonts/NotoNaskhArabic-Regular.ttf');
+      urduFont = pw.Font.ttf(regularData);
       try {
-        // Try loading a system font - on Windows, Arial Unicode may work
-        // For production, bundle an Urdu font like NotoNastaliqUrdu
-        // urduFont = pw.Font.ttf(await rootBundle.load('assets/fonts/NotoNaskhArabic-Regular.ttf'));
-      } catch (_) {}
+        final boldData = await rootBundle.load('assets/fonts/NotoNaskhArabic-Bold.ttf');
+        urduBoldFont = pw.Font.ttf(boldData);
+      } catch (_) {
+        urduBoldFont = urduFont; // fallback to regular if bold missing
+      }
+    } catch (_) {
+      // Font not found - PDF will show boxes for Urdu text
+      // See FONT_SETUP.md for instructions
     }
 
     final baseTextStyle = pw.TextStyle(
       fontSize: 10,
-      font: urduFont,
+      font: isUrdu ? urduFont : null,
     );
     final boldTextStyle = pw.TextStyle(
       fontSize: 10,
       fontWeight: pw.FontWeight.bold,
-      font: urduBoldFont ?? urduFont,
+      font: isUrdu ? (urduBoldFont ?? urduFont) : null,
     );
 
     pdf.addPage(
@@ -555,8 +638,8 @@ class BillPreviewScreen extends StatelessWidget {
                     pw.SizedBox(height: 3),
                     pw.Text(
                       isUrdu
-                          ? CompanyInfo.addressUrdu.replaceAll('\n', ' | ')
-                          : CompanyInfo.addressEnglish.replaceAll('\n', ' | '),
+                          ? CompanyInfo.addressUrdu.replaceAll('\n', ' ')
+                          : CompanyInfo.addressEnglish.replaceAll('\n', ' '),
                       textAlign: pw.TextAlign.center,
                       style: pw.TextStyle(
                         color: const PdfColor(0.9, 0.9, 0.9),
@@ -597,47 +680,104 @@ class BillPreviewScreen extends StatelessWidget {
               ),
               pw.SizedBox(height: 8),
               // Bill info
+              // 1. Bill Number and Date Row
               pw.Container(
-                padding: const pw.EdgeInsets.symmetric(horizontal: 8, vertical: 6),
                 decoration: pw.BoxDecoration(
                   border: pw.Border.all(color: const PdfColor(0.9, 0.7, 0.7), width: 0.8),
-                  color: PdfColors.white,
                 ),
-                child: pw.Row(
-                  mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+                child: pw.Table(
+                  border: pw.TableBorder.symmetric(
+                    inside: const pw.BorderSide(color: PdfColor(0.9, 0.7, 0.7), width: 0.8),
+                  ),
+                  // Agar Urdu hai toh alag widths, English hai toh alag
+                  columnWidths: isUrdu
+                      ? { 0: const pw.FlexColumnWidth(2), 1: const pw.FlexColumnWidth(1), 2: const pw.FlexColumnWidth(2), 3: const pw.FlexColumnWidth(1) }
+                      : { 0: const pw.FlexColumnWidth(1), 1: const pw.FlexColumnWidth(2), 2: const pw.FlexColumnWidth(1), 3: const pw.FlexColumnWidth(2) },
                   children: [
-                    pw.Text(
-                      isUrdu ? 'نام خریدار: ${bill.customerName}' : 'Customer: ${bill.customerName}',
-                      style: boldTextStyle,
+                    pw.TableRow(
+                      children: isUrdu
+                          ? [
+                        _pdfCell(dateStr, baseTextStyle),
+                        pw.Container(color: pdfLightRed, child: _pdfCell('تاریخ', boldTextStyle)),
+                        _pdfCell(bill.billNumber, boldTextStyle.copyWith(color: pdfRed)),
+                        pw.Container(color: pdfLightRed, child: _pdfCell('نمبر', boldTextStyle)),
+                      ]
+                          : [
+                        pw.Container(color: pdfLightRed, child: _pdfCell('Bill No', boldTextStyle)),
+                        _pdfCell(bill.billNumber, boldTextStyle.copyWith(color: pdfRed)),
+                        pw.Container(color: pdfLightRed, child: _pdfCell('Date', boldTextStyle)),
+                        _pdfCell(dateStr, baseTextStyle),
+                      ],
                     ),
-                    pw.Row(children: [
-                      pw.Text(
-                        '${isUrdu ? "نمبر" : "No."}: ${bill.billNumber}  |  ${isUrdu ? "تاریخ" : "Date"}: $dateStr',
-                        style: baseTextStyle,
-                      ),
-                    ]),
+                  ],
+                ),
+              ),
+              pw.SizedBox(height: 4),
+
+              // 2. Customer Name Row
+              pw.Container(
+                decoration: pw.BoxDecoration(
+                  border: pw.Border.all(color: const PdfColor(0.9, 0.7, 0.7), width: 0.8),
+                ),
+                child: pw.Table(
+                  border: pw.TableBorder.symmetric(
+                    inside: const pw.BorderSide(color: PdfColor(0.9, 0.7, 0.7), width: 0.8),
+                  ),
+                  columnWidths: isUrdu
+                      ? { 0: const pw.FlexColumnWidth(3), 1: const pw.FlexColumnWidth(1) }
+                      : { 0: const pw.FlexColumnWidth(1), 1: const pw.FlexColumnWidth(3) },
+                  children: [
+                    pw.TableRow(
+                      children: isUrdu
+                          ? [
+                        pw.Container(
+                          padding: const pw.EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+                          alignment: pw.Alignment.centerRight,
+                          child: pw.Text(bill.customerName.isEmpty ? '---' : bill.customerName, style: boldTextStyle),
+                        ),
+                        pw.Container(
+                          color: pdfRed,
+                          child: _pdfCell('نام خریدار', boldTextStyle.copyWith(color: PdfColors.white)),
+                        ),
+                      ]
+                          : [
+                        pw.Container(
+                          color: pdfRed,
+                          child: _pdfCell('Customer', boldTextStyle.copyWith(color: PdfColors.white)),
+                        ),
+                        pw.Container(
+                          padding: const pw.EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+                          alignment: pw.Alignment.centerLeft,
+                          child: pw.Text(bill.customerName.isEmpty ? '---' : bill.customerName, style: boldTextStyle),
+                        ),
+                      ],
+                    ),
                   ],
                 ),
               ),
               pw.SizedBox(height: 6),
-              // Table
+              // 3. Items Table
               pw.Table(
                 border: pw.TableBorder.all(color: const PdfColor(0.9, 0.7, 0.7), width: 0.8),
-                columnWidths: {
-                  0: const pw.FlexColumnWidth(3),
-                  1: const pw.FlexColumnWidth(2),
-                  2: const pw.FlexColumnWidth(2),
-                  3: const pw.FlexColumnWidth(2),
-                },
+                columnWidths: isUrdu
+                    ? { 0: const pw.FlexColumnWidth(2), 1: const pw.FlexColumnWidth(2), 2: const pw.FlexColumnWidth(2), 3: const pw.FlexColumnWidth(3) }
+                    : { 0: const pw.FlexColumnWidth(3), 1: const pw.FlexColumnWidth(2), 2: const pw.FlexColumnWidth(2), 3: const pw.FlexColumnWidth(2) },
                 children: [
                   // Header row
                   pw.TableRow(
                     decoration: const pw.BoxDecoration(color: pdfRed),
-                    children: [
-                      _pdfHeaderCell(isUrdu ? 'تفصیل' : 'Description', urduFont),
-                      _pdfHeaderCell(isUrdu ? 'تعداد' : 'Qty', urduFont),
-                      _pdfHeaderCell(isUrdu ? 'نرخ' : 'Rate', urduFont),
-                      _pdfHeaderCell(isUrdu ? 'رقم' : 'Amount', urduFont),
+                    children: isUrdu
+                        ? [
+                      _pdfHeaderCell('رقم', urduFont),
+                      _pdfHeaderCell('نرخ', urduFont),
+                      _pdfHeaderCell('تعداد', urduFont),
+                      _pdfHeaderCell('تفصیل', urduFont),
+                    ]
+                        : [
+                      _pdfHeaderCell('Description', urduFont),
+                      _pdfHeaderCell('Qty', urduFont),
+                      _pdfHeaderCell('Rate', urduFont),
+                      _pdfHeaderCell('Amount', urduFont),
                     ],
                   ),
                   // Items
@@ -645,30 +785,24 @@ class BillPreviewScreen extends StatelessWidget {
                     decoration: pw.BoxDecoration(
                       color: e.key % 2 == 0 ? PdfColors.white : pdfLightRed,
                     ),
-                    children: [
-                      _pdfCell(e.value.description, baseTextStyle, pw.TextAlign.left),
-                      _pdfCell(
-                        e.value.quantity == e.value.quantity.truncate()
-                            ? e.value.quantity.toInt().toString()
-                            : e.value.quantity.toString(),
-                        baseTextStyle,
-                      ),
+                    children: isUrdu
+                        ? [
+                      _pdfCell(_formatAmount(e.value.amount), pw.TextStyle(fontSize: 10, fontWeight: pw.FontWeight.bold, color: pdfRed, font: urduFont)),
                       _pdfCell(_formatAmount(e.value.rate), baseTextStyle),
-                      _pdfCell(
-                        _formatAmount(e.value.amount),
-                        pw.TextStyle(
-                          fontSize: 10,
-                          fontWeight: pw.FontWeight.bold,
-                          color: pdfRed,
-                          font: urduFont,
-                        ),
-                      ),
+                      _pdfCell(e.value.quantity == e.value.quantity.truncate() ? e.value.quantity.toInt().toString() : e.value.quantity.toString(), baseTextStyle),
+                      _pdfCell(e.value.description, baseTextStyle, pw.TextAlign.right),
+                    ]
+                        : [
+                      _pdfCell(e.value.description, baseTextStyle, pw.TextAlign.left),
+                      _pdfCell(e.value.quantity == e.value.quantity.truncate() ? e.value.quantity.toInt().toString() : e.value.quantity.toString(), baseTextStyle),
+                      _pdfCell(_formatAmount(e.value.rate), baseTextStyle),
+                      _pdfCell(_formatAmount(e.value.amount), pw.TextStyle(fontSize: 10, fontWeight: pw.FontWeight.bold, color: pdfRed, font: urduFont)),
                     ],
                   )),
                   // Extra empty rows
                   ...List.generate(
                     (6 - bill.items.length).clamp(0, 6),
-                    (_) => pw.TableRow(
+                        (_) => pw.TableRow(
                       decoration: const pw.BoxDecoration(color: PdfColors.white),
                       children: [
                         _pdfCell('', baseTextStyle),
@@ -766,9 +900,94 @@ class BillPreviewScreen extends StatelessWidget {
     );
   }
 
-  Future<void> _printBill(BuildContext context) async {
+  Future<void> _saveBillOnly(BuildContext context) async {
+    setState(() => _saving = true);
     try {
-      await BillStorage.saveBill(bill); // save to history
+      bill.id ??= DateTime.now().millisecondsSinceEpoch.toString();
+      await BillStorage.saveBill(bill);
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Row(children: [
+              const Icon(Icons.check_circle, color: Colors.white),
+              const SizedBox(width: 8),
+              Text(bill.isUrdu ? 'بل محفوظ ہو گیا ✓' : 'Bill saved to history ✓'),
+            ]),
+            backgroundColor: Colors.green.shade600,
+            duration: const Duration(seconds: 2),
+          ),
+        );
+      }
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  Future<void> _downloadPdf(BuildContext context) async {
+    setState(() => _saving = true);
+    try {
+      await BillStorage.saveBill(bill);
+      final pdf = await _generatePdf();
+      final bytes = await pdf.save();
+
+      Directory? dir;
+      try {
+        if (Platform.isAndroid) {
+          dir = Directory('/storage/emulated/0/Download');
+          if (!await dir.exists()) dir = await getExternalStorageDirectory();
+        } else if (Platform.isWindows || Platform.isMacOS || Platform.isLinux) {
+          dir = await getDownloadsDirectory() ?? await getApplicationDocumentsDirectory();
+        } else {
+          dir = await getApplicationDocumentsDirectory();
+        }
+      } catch (_) {
+        dir = await getApplicationDocumentsDirectory();
+      }
+
+      final filename = 'Bill_${bill.billNumber}_${bill.customerName.isEmpty ? "bill" : bill.customerName}_${DateFormat('ddMMyyyy').format(bill.date)}.pdf';
+      final file = File('${dir!.path}/$filename');
+      await file.writeAsBytes(bytes);
+
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  bill.isUrdu ? 'PDF ڈاؤنلوڈ ہو گئی ✓' : 'PDF Downloaded ✓',
+                  style: const TextStyle(fontWeight: FontWeight.bold),
+                ),
+                Text(file.path, style: const TextStyle(fontSize: 11), overflow: TextOverflow.ellipsis),
+              ],
+            ),
+            backgroundColor: Colors.orange.shade700,
+            duration: const Duration(seconds: 4),
+          ),
+        );
+      }
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Download error: $e'), backgroundColor: Colors.red),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  Future<void> _printBill(BuildContext context) async {
+    setState(() => _saving = true);
+    try {
+      await BillStorage.saveBill(bill);
       final pdf = await _generatePdf();
       await Printing.layoutPdf(
         onLayout: (_) => pdf.save(),
@@ -777,8 +996,8 @@ class BillPreviewScreen extends StatelessWidget {
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text(bill.isUrdu ? 'بل محفوظ ہو گیا' : 'Bill saved to history'),
-            backgroundColor: Colors.green,
+            content: Text(bill.isUrdu ? 'بل محفوظ ہو گیا ✓' : 'Bill saved to history ✓'),
+            backgroundColor: Colors.green.shade600,
             duration: const Duration(seconds: 2),
           ),
         );
@@ -789,12 +1008,15 @@ class BillPreviewScreen extends StatelessWidget {
           SnackBar(content: Text('Print error: $e'), backgroundColor: Colors.red),
         );
       }
+    } finally {
+      if (mounted) setState(() => _saving = false);
     }
   }
 
   Future<void> _shareBill(BuildContext context) async {
+    setState(() => _saving = true);
     try {
-      await BillStorage.saveBill(bill); // save to history
+      await BillStorage.saveBill(bill);
       final pdf = await _generatePdf();
       await Printing.sharePdf(
         bytes: await pdf.save(),
@@ -806,6 +1028,8 @@ class BillPreviewScreen extends StatelessWidget {
           SnackBar(content: Text('Share error: $e'), backgroundColor: Colors.red),
         );
       }
+    } finally {
+      if (mounted) setState(() => _saving = false);
     }
   }
 }

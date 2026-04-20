@@ -13,6 +13,7 @@ dependencies:
   printing: ^5.12.0
   intl: ^0.18.0
   shared_preferences: ^2.2.2
+  path_provider: ^2.1.2
 
 dev_dependencies:
   flutter_test:
@@ -21,12 +22,12 @@ dev_dependencies:
 
 flutter:
   uses-material-design: true
-  # Uncomment to add Urdu font for proper Urdu rendering:
-  # assets:
-  #   - assets/fonts/
-  # fonts:
-  #   - family: NotoNaskhArabic
-  #     fonts:
-  #       - asset: assets/fonts/NotoNaskhArabic-Regular.ttf
-  #       - asset: assets/fonts/NotoNaskhArabic-Bold.ttf
-  #         weight: 700
+  assets:
+    - assets/fonts/
+
+  fonts:
+    - family: NotoNaskhArabic
+      fonts:
+        - asset: assets/fonts/NotoNaskhArabic-Regular.ttf
+        - asset: assets/fonts/NotoNaskhArabic-Bold.ttf
+          weight: 700
