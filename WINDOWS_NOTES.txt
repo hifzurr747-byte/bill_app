@@ -1,0 +1,14 @@
+# Windows Support Notes
+
+To enable Windows printing support, ensure the following in your
+windows/runner/CMakeLists.txt (Flutter auto-generates this on first build):
+
+The `printing` package supports Windows natively via the Win32 API.
+No additional configuration is needed beyond running:
+
+  flutter run -d windows
+
+The app will auto-detect available printers on Windows.
+
+For the Windows build, the PDF will open in the system PDF viewer
+allowing the user to select the printer from there.
